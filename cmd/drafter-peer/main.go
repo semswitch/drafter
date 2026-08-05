@@ -20,12 +20,21 @@ import (
 	"github.com/loopholelabs/logging"
 	"github.com/loopholelabs/silo/pkg/storage/metrics"
 	siloprom "github.com/loopholelabs/silo/pkg/storage/metrics/prometheus"
+	"github.com/loopholelabs/silo/pkg/storage/protocol/packets"
 
 	"github.com/loopholelabs/silo/pkg/storage/migrator"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+func migrationOptions(concurrency int) *common.MigrateToOptions {
+	return &common.MigrateToOptions{
+		Concurrency:     concurrency,
+		Compression:     true,
+		CompressionType: packets.CompressionTypeZeroes,
+	}
+}
 
 func main() {
 
@@ -316,10 +325,7 @@ func main() {
 			}
 
 			before = time.Now()
-			opts := &common.MigrateToOptions{
-				Concurrency: *concurrency,
-				Compression: true,
-			}
+			opts := migrationOptions(*concurrency)
 
 			err = p.MigrateTo(
 				ctx,
