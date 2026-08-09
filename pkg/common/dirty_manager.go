@@ -20,6 +20,9 @@ type DeviceStatus struct {
 	Ready                         bool
 	ReadyAndSentDirty             bool
 	SuspendedAtPreGetDirty        bool
+	StopOnNonConvergence          bool
+	previousDirtyBlocks           int
+	hasPreviousDirtyRound         bool
 }
 
 type DirtyManager struct {
@@ -157,8 +160,14 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 	}
 
 	di.TotalCycles++
+	nonConverging := di.StopOnNonConvergence && di.MaxCycles > 0 && di.hasPreviousDirtyRound && len(blocks) > 0 &&
+		len(blocks) >= di.previousDirtyBlocks
+	di.previousDirtyBlocks = len(blocks)
+	di.hasPreviousDirtyRound = true
 
-	if len(blocks) < di.MaxDirtyBlocks {
+	if nonConverging {
+		dm.markDeviceReady(name, di)
+	} else if len(blocks) < di.MaxDirtyBlocks {
 		di.CyclesBelowDirtyBlockTreshold++
 		if di.CyclesBelowDirtyBlockTreshold > di.MinCycles {
 			dm.markDeviceReady(name, di)

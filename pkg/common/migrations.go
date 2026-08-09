@@ -37,7 +37,8 @@ type MigrateToDevice struct {
 	MinCycles      int `json:"minCycles"`
 	MaxCycles      int `json:"maxCycles"`
 
-	CycleThrottle time.Duration `json:"cycleThrottle"`
+	CycleThrottle        time.Duration `json:"cycleThrottle"`
+	StopOnNonConvergence bool          `json:"stopOnNonConvergence"`
 }
 
 type MigrateFromDevice struct {
@@ -517,10 +518,11 @@ func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, w
 	dirtyDevices := make(map[string]*DeviceStatus, 0)
 	for _, d := range devices {
 		dirtyDevices[d.Name] = &DeviceStatus{
-			CycleThrottle:  d.CycleThrottle,
-			MinCycles:      d.MinCycles,
-			MaxCycles:      d.MaxCycles,
-			MaxDirtyBlocks: d.MaxDirtyBlocks,
+			CycleThrottle:        d.CycleThrottle,
+			MinCycles:            d.MinCycles,
+			MaxCycles:            d.MaxCycles,
+			MaxDirtyBlocks:       d.MaxDirtyBlocks,
+			StopOnNonConvergence: d.StopOnNonConvergence,
 		}
 	}
 

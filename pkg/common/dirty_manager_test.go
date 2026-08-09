@@ -127,3 +127,36 @@ func TestDirtyManagerIdleWaitWakesOnSuspension(t *testing.T) {
 		t.Fatal("idle wait did not wake after suspension")
 	}
 }
+
+func TestDirtyManagerStopsCyclingWhenDirtySetDoesNotConverge(t *testing.T) {
+	device := &DeviceStatus{
+		MinCycles: 1, MaxCycles: 3, MaxDirtyBlocks: 1, StopOnNonConvergence: true,
+	}
+	suspended := false
+	state := NewVMStateMgr(
+		context.Background(),
+		func(context.Context, time.Duration) error { suspended = true; return nil },
+		time.Second,
+		func(context.Context) error { return nil },
+		func() error { return nil },
+		func() {},
+	)
+	manager := NewDirtyManager(state, map[string]*DeviceStatus{DeviceMemoryName: device}, func() error { return nil })
+
+	for _, count := range []int{4, 4} {
+		blocks := make([]uint, count)
+		if _, err := manager.PreGetDirty(DeviceMemoryName); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.PostGetDirty(DeviceMemoryName, blocks); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.PostMigrateDirty(DeviceMemoryName, blocks); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if !device.Ready || !suspended {
+		t.Fatalf("non-converging device ready=%t suspended=%t", device.Ready, suspended)
+	}
+}
