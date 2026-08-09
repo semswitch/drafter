@@ -258,7 +258,7 @@ func migrateNow(id int, log loggingtypes.Logger, met *testutil.DummyMetrics, con
 	}
 
 	hooks := peer.MigrateToHooks{
-		OnBeforeSuspend:          func() {},
+		OnBeforeSuspend:          func() error { return nil },
 		OnAfterSuspend:           func() {},
 		OnAllMigrationsCompleted: func() {},
 		OnProgress:               func(p map[string]*migrator.MigrationProgress) {},

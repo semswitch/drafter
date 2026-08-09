@@ -49,7 +49,7 @@ func TestDirtyManager(t *testing.T) {
 		return nil
 	}
 
-	onBeforeSuspend := func() {}
+	onBeforeSuspend := func() error { return nil }
 
 	onAfterSuspend := func() {}
 

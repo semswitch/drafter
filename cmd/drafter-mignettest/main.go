@@ -134,7 +134,7 @@ func main() {
 		}
 
 		hooks := peer.MigrateToHooks{
-			OnBeforeSuspend:          func() {},
+			OnBeforeSuspend:          func() error { return nil },
 			OnAfterSuspend:           func() {},
 			OnAllMigrationsCompleted: func() {},
 			OnProgress:               func(p map[string]*migrator.MigrationProgress) {},
@@ -279,7 +279,7 @@ func handleConnection(migration int, conn net.Conn, log types.Logger, firecracke
 	}
 
 	hooks := peer.MigrateToHooks{
-		OnBeforeSuspend:          func() {},
+		OnBeforeSuspend:          func() error { return nil },
 		OnAfterSuspend:           func() {},
 		OnAllMigrationsCompleted: func() {},
 		OnProgress:               func(p map[string]*migrator.MigrationProgress) {},

@@ -335,8 +335,9 @@ func main() {
 				readers,
 				writers,
 				peer.MigrateToHooks{
-					OnBeforeSuspend: func() {
+					OnBeforeSuspend: func() error {
 						before = time.Now()
+						return nil
 					},
 					OnAfterSuspend: func() {
 						log.Info().Int64("ms", time.Since(before).Milliseconds()).Msg("Suspend")

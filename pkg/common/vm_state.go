@@ -17,7 +17,7 @@ type VMStateMgr struct {
 	suspendedLock   sync.Mutex
 	suspended       bool
 	suspendedCh     chan struct{}
-	onBeforeSuspend func()
+	onBeforeSuspend func() error
 	onAfterSuspend  func()
 	suspendFunc     func(ctx context.Context, timeout time.Duration) error
 	msyncFunc       func(ctx context.Context) error
@@ -28,7 +28,7 @@ func NewVMStateMgr(ctx context.Context,
 	suspendFunc func(ctx context.Context, timeout time.Duration) error,
 	suspendTimeout time.Duration,
 	msyncFunc func(ctx context.Context) error,
-	onBeforeSuspend func(),
+	onBeforeSuspend func() error,
 	onAfterSuspend func()) *VMStateMgr {
 	return &VMStateMgr{
 		ctx:             ctx,
@@ -47,7 +47,7 @@ func NewDummyVMStateMgr(ctx context.Context) *VMStateMgr {
 		suspendFunc:     func(context.Context, time.Duration) error { return nil },
 		suspendTimeout:  10 * time.Second,
 		msyncFunc:       func(context.Context) error { return nil },
-		onBeforeSuspend: func() {},
+		onBeforeSuspend: func() error { return nil },
 		onAfterSuspend:  func() {},
 		suspendedCh:     make(chan struct{}),
 	}
@@ -71,7 +71,9 @@ func (sm *VMStateMgr) SuspendAndMsync() error {
 	}
 
 	if sm.onBeforeSuspend != nil {
-		sm.onBeforeSuspend()
+		if err := sm.onBeforeSuspend(); err != nil {
+			return err
+		}
 	}
 
 	err := sm.suspendFunc(sm.ctx, sm.suspendTimeout)

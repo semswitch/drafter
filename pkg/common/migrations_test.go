@@ -206,8 +206,9 @@ func TestMigrateFromFsThenBetween(t *testing.T) {
 			fmt.Printf("msyncFunc\n")
 			return nil
 		}
-		onBeforeSuspend := func() {
+		onBeforeSuspend := func() error {
 			fmt.Printf("onBeforeSuspend\n")
+			return nil
 		}
 		onAfterSuspend := func() {
 			fmt.Printf("onAfterSuspend\n")

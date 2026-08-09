@@ -630,7 +630,7 @@ func migration(t *testing.T, config *migrationConfig) {
 		r2, w2 := io.Pipe()
 
 		hooks := peer.MigrateToHooks{
-			OnBeforeSuspend:          func() {},
+			OnBeforeSuspend:          func() error { return nil },
 			OnAfterSuspend:           func() {},
 			OnAllMigrationsCompleted: func() {},
 			OnProgress:               func(p map[string]*migrator.MigrationProgress) {},

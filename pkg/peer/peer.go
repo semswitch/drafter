@@ -58,7 +58,7 @@ type PeerMetrics struct {
 
 // Callbacks for MigrateTO
 type MigrateToHooks struct {
-	OnBeforeSuspend          func()
+	OnBeforeSuspend          func() error
 	OnAfterSuspend           func()
 	OnAllMigrationsCompleted func()
 	OnProgress               func(p map[string]*migrator.MigrationProgress)

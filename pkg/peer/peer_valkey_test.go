@@ -166,7 +166,7 @@ func TestPeerReplayValkey(t *testing.T) {
 	r2, w2 := io.Pipe()
 
 	hooks := MigrateToHooks{
-		OnBeforeSuspend:          func() {},
+		OnBeforeSuspend:          func() error { return nil },
 		OnAfterSuspend:           func() {},
 		OnAllMigrationsCompleted: func() {},
 		OnProgress:               func(p map[string]*migrator.MigrationProgress) {},
