@@ -70,6 +70,8 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	// RPC Bits
 	agent            *ipc.AgentRPC[L, R, G]
 	AgentServerLocal L
+	SkipAgentRPC     bool
+	BeforeSuspend    func(context.Context) error
 }
 
 const resumeMaxRetries = 10
@@ -81,25 +83,23 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 	rp.runningLock.Lock()
 	defer rp.runningLock.Unlock()
 
-	// Read from the config device
-	configFileData, err := os.ReadFile(path.Join(rp.DevicePath(), common.DeviceConfigName))
-	if err != nil {
-		return errors.Join(ErrCouldNotOpenConfigFile, err)
-	}
-
-	// Find the first 0 byte...
-	firstZero := 0
-	for i := 0; i < len(configFileData); i++ {
-		if configFileData[i] == 0 {
-			firstZero = i
-			break
-		}
-	}
-	configFileData = configFileData[:firstZero]
-
 	var packageConfig PackageConfiguration
-	if err := json.Unmarshal(configFileData, &packageConfig); err != nil {
-		return errors.Join(ErrCouldNotDecodeConfigFile, err)
+	var err error
+	if !rp.SkipAgentRPC {
+		configFileData, err := os.ReadFile(path.Join(rp.DevicePath(), common.DeviceConfigName))
+		if err != nil {
+			return errors.Join(ErrCouldNotOpenConfigFile, err)
+		}
+		firstZero := len(configFileData)
+		for i := 0; i < len(configFileData); i++ {
+			if configFileData[i] == 0 {
+				firstZero = i
+				break
+			}
+		}
+		if err := json.Unmarshal(configFileData[:firstZero], &packageConfig); err != nil {
+			return errors.Join(ErrCouldNotDecodeConfigFile, err)
+		}
 	}
 
 	if rp.DirectMemory {
@@ -172,6 +172,16 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 	rp.dg = dg
 
 	rp.setRunning(true)
+	if rp.SkipAgentRPC {
+		if rp.Log != nil {
+			rp.Log.Info().
+				Int64("resumeMachineMs", resumeMachineTook.Milliseconds()).
+				Int64("timeMs", time.Since(resumeCtime).Milliseconds()).
+				Str("vmpath", rp.Machine.VMPath).
+				Msg("Resumed fc vm without AgentRPC")
+		}
+		return nil
+	}
 
 	rpcCtime := time.Now()
 	// Start the RPC stuff...
@@ -343,22 +353,21 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) GetVMPid() int {
 }
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Close(dg *devicegroup.DeviceGroup) error {
-	if rp.agent != nil {
+	if rp.Machine != nil && rp.running {
 		if rp.Log != nil {
 			rp.Log.Debug().Msg("Firecracker runtime close")
 		}
-
-		// We only need to do this if it hasn't been suspended, but it'll refuse inside Suspend
-		rp.GrabMemory = false                                 // We don't care.
-		err := rp.Suspend(context.TODO(), 10*time.Minute, dg) // TODO. Timeout
+		rp.GrabMemory = false
+		err := rp.Suspend(context.TODO(), 10*time.Minute, dg)
 		if err != nil {
 			return err
 		}
-
+	}
+	if rp.hypervisorCancel != nil {
 		rp.hypervisorCancel()
-
-		err = rp.agent.Close()
-		if err != nil {
+	}
+	if rp.agent != nil {
+		if err := rp.agent.Close(); err != nil {
 			return err
 		}
 	}
@@ -404,21 +413,26 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 
 	suspendCtx, cancelSuspendCtx := context.WithTimeout(ctx, suspendTimeout)
 	defer cancelSuspendCtx()
+	var err error
 
-	r, err := rp.agent.GetRemote(suspendCtx)
-	if err != nil {
-		return err
-	}
-
-	remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
-	err = remote.BeforeSuspend(suspendCtx)
-	if err != nil {
-		return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
-	}
-
-	err = rp.agent.Close()
-	if err != nil {
-		return err
+	if rp.SkipAgentRPC {
+		if rp.BeforeSuspend != nil {
+			if err := rp.BeforeSuspend(suspendCtx); err != nil {
+				return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
+			}
+		}
+	} else {
+		r, err := rp.agent.GetRemote(suspendCtx)
+		if err != nil {
+			return err
+		}
+		remote := *(*ipc.AgentServerRemote[G])(unsafe.Pointer(&r))
+		if err := remote.BeforeSuspend(suspendCtx); err != nil {
+			return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
+		}
+		if err := rp.agent.Close(); err != nil {
+			return err
+		}
 	}
 
 	snapshotType := SDKSnapshotTypeMsyncAndState
