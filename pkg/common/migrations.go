@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -440,6 +441,9 @@ type MigrateToOptions struct {
 	CompressionType             packets.CompressionType
 	OnInitialMigrationCompleted func(map[string]*migrator.MigrationProgress)
 	OnDirtyRound                func(name string, blocks []uint, suspended bool)
+	OnMigrateAllCompleted       func(time.Duration, map[string]*migrator.MigrationProgress)
+	OnDirtyRoundCompleted       func(name string, blocks []uint, suspended bool, duration time.Duration)
+	OnCompletionCompleted       func(time.Duration)
 	OnProtocolMetrics           func(*protocol.Metrics)
 }
 
@@ -488,12 +492,18 @@ func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, w
 	}
 
 	// Do the main migration of the data...
+	migrateAllStarted := time.Now()
 	err = dg.MigrateAll(options.Concurrency, onProgress)
 	if err != nil {
 		return err
 	}
+	migrateAllDuration := time.Since(migrateAllStarted)
+	progress := dg.GetMigrationProgress()
 	if options.OnInitialMigrationCompleted != nil {
-		options.OnInitialMigrationCompleted(dg.GetMigrationProgress())
+		options.OnInitialMigrationCompleted(progress)
+	}
+	if options.OnMigrateAllCompleted != nil {
+		options.OnMigrateAllCompleted(migrateAllDuration, progress)
 	}
 
 	if log != nil {
@@ -528,16 +538,32 @@ func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, w
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
 
 	postGetDirty := dm.PostGetDirty
-	if options.OnDirtyRound != nil {
+	postMigrateDirty := dm.PostMigrateDirty
+	var dirtyStarts sync.Map
+	if options.OnDirtyRound != nil || options.OnDirtyRoundCompleted != nil {
 		postGetDirty = func(name string, blocks []uint) (bool, error) {
-			options.OnDirtyRound(name, blocks, dm.Devices[name].SuspendedAtPreGetDirty)
-			return dm.PostGetDirty(name, blocks)
+			suspended := dm.Devices[name].SuspendedAtPreGetDirty
+			if options.OnDirtyRound != nil {
+				options.OnDirtyRound(name, blocks, suspended)
+			}
+			cont, err := dm.PostGetDirty(name, blocks)
+			if cont && err == nil && options.OnDirtyRoundCompleted != nil {
+				dirtyStarts.Store(name, time.Now())
+			}
+			return cont, err
+		}
+		postMigrateDirty = func(name string, blocks []uint) (bool, error) {
+			if started, ok := dirtyStarts.LoadAndDelete(name); ok {
+				options.OnDirtyRoundCompleted(name, blocks,
+					dm.Devices[name].SuspendedAtPreGetDirty, time.Since(started.(time.Time)))
+			}
+			return dm.PostMigrateDirty(name, blocks)
 		}
 	}
 	err = dg.MigrateDirty(&devicegroup.MigrateDirtyHooks{
 		PreGetDirty:      dm.PreGetDirty,
 		PostGetDirty:     postGetDirty,
-		PostMigrateDirty: dm.PostMigrateDirty,
+		PostMigrateDirty: postMigrateDirty,
 		Completed:        func(name string) {},
 	})
 	if err != nil {
@@ -553,9 +579,13 @@ func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, w
 	}
 
 	// Send Silo completion events for the devices. This will trigger any S3 sync behaviour etc.
+	completionStarted := time.Now()
 	err = dg.Completed()
 	if err != nil {
 		return err
+	}
+	if options.OnCompletionCompleted != nil {
+		options.OnCompletionCompleted(time.Since(completionStarted))
 	}
 
 	if log != nil {
