@@ -67,6 +67,10 @@ func (dm *DirtyManager) PreGetDirty(name string) (bool, error) {
 	return true, nil
 }
 
+func (dm *DirtyManager) WaitWhenIdle(string) error {
+	return dm.VMState.WaitForSuspension()
+}
+
 func (dm *DirtyManager) PostGetDirty(name string, blocks []uint) (bool, error) {
 	// If there were no dirty blocks, and the VM was stopped, return false (finish doing dirty sync)
 	if len(blocks) == 0 && dm.Devices[name].SuspendedAtPreGetDirty {

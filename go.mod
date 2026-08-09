@@ -2,7 +2,7 @@ module github.com/loopholelabs/drafter
 
 go 1.24
 
-replace github.com/loopholelabs/silo => github.com/semswitch/silo v0.2.21-0.20260809110632-35c132619d06
+replace github.com/loopholelabs/silo => github.com/semswitch/silo v0.2.21-0.20260809122849-67eb3db14d52
 
 require (
 	github.com/coreos/go-iptables v0.8.0

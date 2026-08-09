@@ -81,11 +81,6 @@ func (sm *VMStateMgr) SuspendAndMsync() error {
 		return errors.Join(ErrCouldNotSuspendAndCloseAgentServer, err)
 	}
 
-	err = sm.msyncFunc(sm.ctx)
-	if err != nil {
-		return errors.Join(ErrCouldNotMsyncRunner, err)
-	}
-
 	if sm.onAfterSuspend != nil {
 		sm.onAfterSuspend()
 	}
@@ -97,4 +92,13 @@ func (sm *VMStateMgr) SuspendAndMsync() error {
 
 func (sm *VMStateMgr) Msync() error {
 	return sm.msyncFunc(sm.ctx)
+}
+
+func (sm *VMStateMgr) WaitForSuspension() error {
+	select {
+	case <-sm.suspendedCh:
+		return nil
+	case <-sm.ctx.Done():
+		return sm.ctx.Err()
+	}
 }

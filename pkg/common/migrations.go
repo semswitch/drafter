@@ -562,6 +562,7 @@ func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, w
 	}
 	err = dg.MigrateDirty(&devicegroup.MigrateDirtyHooks{
 		PreGetDirty:      dm.PreGetDirty,
+		WaitWhenIdle:     dm.WaitWhenIdle,
 		PostGetDirty:     postGetDirty,
 		PostMigrateDirty: postMigrateDirty,
 		Completed:        func(name string) {},

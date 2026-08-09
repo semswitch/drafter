@@ -25,7 +25,6 @@ func TestDirtyManager(t *testing.T) {
 		},
 	}
 
-	var msyncCalled sync.WaitGroup
 	var suspendCalled sync.WaitGroup
 	var authTransferCalled sync.WaitGroup
 
@@ -43,11 +42,7 @@ func TestDirtyManager(t *testing.T) {
 
 	suspendTimeout := 100 * time.Millisecond
 
-	msyncCalled.Add(1)
-	msyncFunc := func(ctx context.Context) error {
-		msyncCalled.Done()
-		return nil
-	}
+	msyncFunc := func(context.Context) error { return nil }
 
 	onBeforeSuspend := func() error { return nil }
 
@@ -91,7 +86,6 @@ func TestDirtyManager(t *testing.T) {
 		// It should have run some things since it's past min
 		if count > 5 {
 			suspendCalled.Wait()
-			msyncCalled.Wait()
 		}
 
 		// Auth is tranfered on NEXT loop to allow dirtyList to be sent
@@ -101,4 +95,35 @@ func TestDirtyManager(t *testing.T) {
 		}
 	}
 
+}
+
+func TestDirtyManagerIdleWaitWakesOnSuspension(t *testing.T) {
+	state := NewVMStateMgr(
+		context.Background(),
+		func(context.Context, time.Duration) error { return nil },
+		time.Second,
+		func(context.Context) error { return nil },
+		func() error { return nil },
+		func() {},
+	)
+	manager := NewDirtyManager(state, map[string]*DeviceStatus{}, func() error { return nil })
+	returned := make(chan error, 1)
+	go func() { returned <- manager.WaitWhenIdle(DeviceMemoryName) }()
+
+	select {
+	case <-returned:
+		t.Fatal("idle wait returned before suspension")
+	case <-time.After(25 * time.Millisecond):
+	}
+	if err := state.SuspendAndMsync(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-returned:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("idle wait did not wake after suspension")
+	}
 }
