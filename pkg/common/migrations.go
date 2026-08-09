@@ -435,9 +435,12 @@ func MigrateFromPipe(log types.Logger, met metrics.SiloMetrics, instanceID strin
 }
 
 type MigrateToOptions struct {
-	Concurrency     int
-	Compression     bool
-	CompressionType packets.CompressionType
+	Concurrency                 int
+	Compression                 bool
+	CompressionType             packets.CompressionType
+	OnInitialMigrationCompleted func(map[string]*migrator.MigrationProgress)
+	OnDirtyRound                func(name string, blocks []uint, suspended bool)
+	OnProtocolMetrics           func(*protocol.Metrics)
 }
 
 /**
@@ -489,6 +492,9 @@ func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, w
 	if err != nil {
 		return err
 	}
+	if options.OnInitialMigrationCompleted != nil {
+		options.OnInitialMigrationCompleted(dg.GetMigrationProgress())
+	}
 
 	if log != nil {
 		m := pro.GetMetrics()
@@ -521,9 +527,16 @@ func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, w
 
 	dm := NewDirtyManager(vmState, dirtyDevices, authTransfer)
 
+	postGetDirty := dm.PostGetDirty
+	if options.OnDirtyRound != nil {
+		postGetDirty = func(name string, blocks []uint) (bool, error) {
+			options.OnDirtyRound(name, blocks, dm.Devices[name].SuspendedAtPreGetDirty)
+			return dm.PostGetDirty(name, blocks)
+		}
+	}
 	err = dg.MigrateDirty(&devicegroup.MigrateDirtyHooks{
 		PreGetDirty:      dm.PreGetDirty,
-		PostGetDirty:     dm.PostGetDirty,
+		PostGetDirty:     postGetDirty,
 		PostMigrateDirty: dm.PostMigrateDirty,
 		Completed:        func(name string) {},
 	})
@@ -551,6 +564,9 @@ func MigrateToPipe(ctx context.Context, log types.Logger, readers []io.Reader, w
 			Uint64("DataSent", m.DataSent).
 			Uint64("DataRecv", m.DataRecv).
 			Msg("MigrateToPipe.Completed")
+	}
+	if options.OnProtocolMetrics != nil {
+		options.OnProtocolMetrics(pro.GetMetrics())
 	}
 
 	return nil

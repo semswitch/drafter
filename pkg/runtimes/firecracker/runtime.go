@@ -68,10 +68,13 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	dg *devicegroup.DeviceGroup
 
 	// RPC Bits
-	agent            *ipc.AgentRPC[L, R, G]
-	AgentServerLocal L
-	SkipAgentRPC     bool
-	BeforeSuspend    func(context.Context) error
+	agent                     *ipc.AgentRPC[L, R, G]
+	AgentServerLocal          L
+	SkipAgentRPC              bool
+	BeforeSuspend             func(context.Context) error
+	OnBeforeSuspendComplete   func(time.Duration)
+	OnSuspendSnapshotComplete func(time.Duration)
+	OnFlushDataComplete       func(time.Duration)
 }
 
 const resumeMaxRetries = 10
@@ -318,6 +321,9 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Start(ctx context.Context, rescue
 func (rp *FirecrackerRuntimeProvider[L, R, G]) FlushData(ctx context.Context, dg *devicegroup.DeviceGroup) error {
 	ctime := time.Now()
 	defer func() {
+		if rp.OnFlushDataComplete != nil {
+			rp.OnFlushDataComplete(time.Since(ctime))
+		}
 		if rp.Log != nil {
 			rp.Log.Info().Int64("ms", time.Since(ctime).Milliseconds()).Msg("Timing FlushData")
 		}
@@ -417,8 +423,12 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 
 	if rp.SkipAgentRPC {
 		if rp.BeforeSuspend != nil {
+			beforeSuspendStarted := time.Now()
 			if err := rp.BeforeSuspend(suspendCtx); err != nil {
 				return errors.Join(ErrCouldNotCallBeforeSuspendRPC, err)
+			}
+			if rp.OnBeforeSuspendComplete != nil {
+				rp.OnBeforeSuspendComplete(time.Since(beforeSuspendStarted))
 			}
 		}
 	} else {
@@ -445,7 +455,11 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 		}
 	}
 
+	snapshotStarted := time.Now()
 	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", snapshotType)
+	if rp.OnSuspendSnapshotComplete != nil {
+		rp.OnSuspendSnapshotComplete(time.Since(snapshotStarted))
+	}
 
 	if err != nil {
 		return errors.Join(ErrCouldNotCreateSnapshot, err)
