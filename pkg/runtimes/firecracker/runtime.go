@@ -243,6 +243,22 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescu
 	return nil
 }
 
+func (rp *FirecrackerRuntimeProvider[L, R, G]) ResumeSuspended(ctx context.Context) error {
+	rp.runningLock.Lock()
+	defer rp.runningLock.Unlock()
+	if rp.running {
+		return nil
+	}
+	if rp.Machine == nil {
+		return ErrCouldNotResumeRunner
+	}
+	if err := rp.Machine.ResumeVM(ctx); err != nil {
+		return errors.Join(ErrCouldNotResumeRunner, err)
+	}
+	rp.setRunning(true)
+	return nil
+}
+
 func (rp *FirecrackerRuntimeProvider[L, R, G]) setRunning(r bool) {
 	if rp.running == r {
 		return // No change. Ignore it

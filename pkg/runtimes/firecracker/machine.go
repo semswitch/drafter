@@ -331,6 +331,11 @@ func (fs *FirecrackerMachine) ResumeSnapshot(ctx context.Context, statePath stri
 	return nil
 }
 
+func (fs *FirecrackerMachine) ResumeVM(ctx context.Context) error {
+	_, err := fs.client.PatchVM(ctx, &models.VM{State: sdk.String(SDKVMStateRunning)})
+	return err
+}
+
 /**
  * Pause the VM and create a snapshot.
  *
