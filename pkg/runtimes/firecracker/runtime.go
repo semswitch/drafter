@@ -75,11 +75,27 @@ type FirecrackerRuntimeProvider[L ipc.AgentServerLocal, R ipc.AgentServerRemote[
 	OnBeforeSuspendComplete   func(time.Duration)
 	OnSuspendSnapshotComplete func(time.Duration)
 	OnFlushDataComplete       func(time.Duration)
+	fullSnapshotMemoryPath    string
 }
 
 const resumeMaxRetries = 10
 const resumeRetrySleep = 1 * time.Second
 const resumeRetryTimeout = 30 * time.Second
+
+func (rp *FirecrackerRuntimeProvider[L, R, G]) AdoptRunningMachine(
+	dg *devicegroup.DeviceGroup,
+	fullSnapshotMemoryPath string,
+) error {
+	rp.runningLock.Lock()
+	defer rp.runningLock.Unlock()
+	if rp.Machine == nil {
+		return ErrCouldNotResumeRunner
+	}
+	rp.dg = dg
+	rp.fullSnapshotMemoryPath = fullSnapshotMemoryPath
+	rp.setRunning(true)
+	return nil
+}
 
 func (rp *FirecrackerRuntimeProvider[L, R, G]) Resume(ctx context.Context, rescueTimeout time.Duration, dg *devicegroup.DeviceGroup, errChan chan error) error {
 	resumeCtime := time.Now()
@@ -462,6 +478,11 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	}
 
 	snapshotType := SDKSnapshotTypeMsyncAndState
+	memoryPath := ""
+	if rp.fullSnapshotMemoryPath != "" {
+		snapshotType = SDKSnapshotTypeFull
+		memoryPath = rp.fullSnapshotMemoryPath
+	}
 	if rp.Log != nil {
 		if rp.HypervisorConfiguration.NoMapShared {
 			// TODO: We don't need the Msync. We just need the state. Change snapshotType when supported in fc
@@ -472,7 +493,7 @@ func (rp *FirecrackerRuntimeProvider[L, R, G]) Suspend(ctx context.Context, susp
 	}
 
 	snapshotStarted := time.Now()
-	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, "", snapshotType)
+	err = rp.Machine.CreateSnapshot(suspendCtx, common.DeviceStateName, memoryPath, snapshotType)
 	if rp.OnSuspendSnapshotComplete != nil {
 		rp.OnSuspendSnapshotComplete(time.Since(snapshotStarted))
 	}

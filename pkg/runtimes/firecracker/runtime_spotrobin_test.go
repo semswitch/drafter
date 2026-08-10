@@ -26,3 +26,15 @@ func TestSuspendUsesConfiguredLifecycleWithoutAgentRPC(t *testing.T) {
 		t.Fatalf("Suspend error = %v, want %v", err, want)
 	}
 }
+
+func TestAdoptRunningMachineUsesFullSnapshotMemory(t *testing.T) {
+	provider := &FirecrackerRuntimeProvider[
+		struct{}, ipc.AgentServerRemote[struct{}], struct{},
+	]{Machine: &FirecrackerMachine{}}
+	if err := provider.AdoptRunningMachine(nil, "memory"); err != nil {
+		t.Fatal(err)
+	}
+	if !provider.running || provider.fullSnapshotMemoryPath != "memory" {
+		t.Fatalf("adopted machine state = running:%t memory:%q", provider.running, provider.fullSnapshotMemoryPath)
+	}
+}
