@@ -128,6 +128,30 @@ func TestDirtyManagerIdleWaitWakesOnSuspension(t *testing.T) {
 	}
 }
 
+func TestMemoryOnlyWithoutCyclesSuspendsWhenReady(t *testing.T) {
+	suspended := false
+	state := NewVMStateMgr(
+		context.Background(),
+		func(context.Context, time.Duration) error { suspended = true; return nil },
+		time.Second,
+		func(context.Context) error { return nil },
+		func() error { return nil },
+		func() {},
+	)
+	manager := NewDirtyManager(
+		state,
+		map[string]*DeviceStatus{DeviceMemoryName: {}},
+		func() error { return nil },
+	)
+	more, err := manager.PreGetDirty(DeviceMemoryName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if more || !suspended {
+		t.Fatalf("pre-get dirty returned more=%t suspended=%t", more, suspended)
+	}
+}
+
 func TestDirtyManagerStopsCyclingWhenDirtySetDoesNotConverge(t *testing.T) {
 	device := &DeviceStatus{
 		MinCycles: 1, MaxCycles: 3, MaxDirtyBlocks: 1, StopOnNonConvergence: true,

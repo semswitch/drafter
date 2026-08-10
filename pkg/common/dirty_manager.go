@@ -64,6 +64,9 @@ func (dm *DirtyManager) PreGetDirty(name string) (bool, error) {
 			// Mark ourselves as ready to suspend.
 			di := dm.Devices[name]
 			dm.markDeviceReady(name, di)
+			if err := dm.suspendIfAllDevicesReady(); err != nil {
+				return false, err
+			}
 			return false, nil // Don't do anything until the VM is suspended.
 		}
 	}
@@ -178,8 +181,13 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 		di.CyclesBelowDirtyBlockTreshold = 0
 	}
 
-	// If all devices are ready, do the authority transfer once...
-	// TODO: Clean this up a bit
+	if err := dm.suspendIfAllDevicesReady(); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func (dm *DirtyManager) suspendIfAllDevicesReady() error {
 	dm.ReadyDevicesLock.Lock()
 	readyDevices := len(dm.ReadyDevices)
 	dm.ReadyDevicesLock.Unlock()
@@ -196,11 +204,11 @@ func (dm *DirtyManager) PostMigrateDirty(name string, blocks []uint) (bool, erro
 			dm.suspendLock.Unlock()
 
 			if err != nil {
-				return true, errors.Join(ErrCouldNotSuspendAndMsyncVM, err)
+				return errors.Join(ErrCouldNotSuspendAndMsyncVM, err)
 			}
 		} else {
 			dm.suspendLock.Unlock()
 		}
 	}
-	return true, nil
+	return nil
 }
